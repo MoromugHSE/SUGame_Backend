@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>SUGame</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500&display=swap" rel="stylesheet">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: 'Orbitron', sans-serif;
+            background: radial-gradient(50% 50% at 50% 50%, #50AAFF 0%, #FAFAFF 50%, #0AEFFF 75%, #0512FB 100%);
+            font-size: clamp(1.625rem, 0.8936rem + 2.3404vw, 3rem);
+        }
+
+        .no-data {
+            margin-top: 2rem;
+            padding: 1rem 2rem;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid #fff;
+            border-radius: 12px;
+            color: #ffffff;
+            font-size: 2rem;
+            text-align: center;
+            text-shadow: 0 0 4px #000;
+        }
+
+        .page {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 20px;
+        }
+
+        .main-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            align-items: center;
+            width: 80%;
+            max-width: 900px;
+        }
+
+        .button-panel {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .button-panel button {
+            background: black;
+            border: 2px solid white;
+            color: white;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        .button-panel button:hover {
+            background: #0aefff;
+            color: black;
+        }
+
+        .lidear_board {
+            position: relative;
+            border: 1px solid #AFAFAF;
+            background-color: black;
+            width: 100%;
+            padding: 10px;
+            min-height: 200px;
+        }
+
+        .lidear_board::before {
+            content: " ";
+            position: absolute;
+            z-index: 1;
+            top: -5px;
+            left: -5px;
+            right: -5px;
+            bottom: -5px;
+            border: 0.15rem solid #E8E8E8;
+        }
+
+        .leader_list {
+            padding: 0;
+            margin: 0;
+            list-style-type: none;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            color: #AFAFAF;
+        }
+
+        .position {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+        }
+
+        .position::before {
+            content: " ";
+            position: absolute;
+            z-index: 1;
+            left: 2rem;
+            height: 1.2rem;
+            width: 1rem;
+            clip-path: polygon(20% 0, 70% 50%, 20% 100%, 0 100%, 50% 50%, 0 0);
+            background-color: black;
+        }
+
+        .name_player {
+            padding-left: 4rem;
+            background-image: linear-gradient(#FFFFFF 25%, #999999 50%, #FFFFFF 75%);
+            color: transparent;
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-stroke: 0.5px black;
+            font-size: 1.5rem;
+            flex: 1;
+            word-break: break-word;
+        }
+
+        .score {
+            min-width: 3rem;
+            padding: 0 10px;
+            background-image: linear-gradient(#FFFFFF 25%, #999999 50%, #FFFFFF 75%);
+            color: transparent;
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-stroke: 0.5px black;
+            text-align: right;
+            position: relative;
+            font-size: 1.5rem;
+        }
+
+        .score::before {
+            content: " ";
+            height: 1.3rem;
+            width: 5px;
+            background-color: black;
+            position: absolute;
+            bottom: -1px;
+            left: -0.5rem;
+        }
+    </style>
+</head>
+<body class="page">
+<div class="main-container">
+    <div class="button-panel">
+        <button onclick="loadResults('/director/round1/results')">Раунд 1</button>
+        <button onclick="loadResults('/director/round1/additional/results')">Доп. Раунд 1</button>
+        <button onclick="loadResults('/director/decoder1/results')">Дешифратор 1</button>
+        <button onclick="loadResults('/director/round2/results')">Раунд 2</button>
+        <button onclick="loadResults('/director/round2/additional/results')">Доп. Раунд 2</button>
+        <button onclick="loadResults('/director/decoder2/results')">Дешифратор 2</button>
+        <button onclick="loadResults('/director/round3/results')">Раунд 3</button>
+        <button onclick="loadResults('/director/overall/results')">Общий</button>
+    </div>
+
+    <div class="lidear_board">
+        <ul class="leader_list">
+            <li class="position"><span class="name_player">Загрузка...</span><span class="score">?</span></li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    async function loadResults(url) {
+        try {
+            const response = await fetch(url, { method: 'POST' });
+            if (!response.ok) throw new Error(await response.text());
+            const result = await response.json();
+
+            const leaderList = document.querySelector('.leader_list');
+            leaderList.innerHTML = '';
+
+            // Пытаемся достать вложенные очки, если ключи result содержат только один объект
+            let scores;
+            const values = Object.values(result);
+
+            if (typeof result === 'object' && !Array.isArray(result)) {
+                if (values.length === 1 && typeof values[0] === 'object' && values[0] !== null && !Array.isArray(values[0])) {
+                    scores = values[0]; // вытаскиваем вложенные очки
+                } else {
+                    scores = result; // считаем, что это уже плоский объект
+                }
+            }
+
+            if (!scores || Object.keys(scores).length === 0) {
+                leaderList.innerHTML = '<li class="no-data">Нет данных</li>';
+                return;
+            }
+
+            // Сортировка по убыванию очков (опционально)
+            const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+
+            sorted.forEach(([player, value]) => {
+                const li = document.createElement('li');
+                li.className = 'position';
+                li.innerHTML = `<span class="name_player">${player}</span><span class="score">${value}</span>`;
+                leaderList.appendChild(li);
+            });
+        } catch (err) {
+            console.error("Ошибка:", err);
+            const leaderList = document.querySelector('.leader_list');
+            leaderList.innerHTML = '<li class="no-data">Ошибка загрузки</li>';
+        }
+    }
+
+
+    loadResults('/director/overall/results');
+</script>
+</body>
+</html>

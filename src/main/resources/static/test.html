@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Тестовый стенд SmartTest</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.2/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .section {
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 8px 12px;
+            margin: 5px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .log {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #f9f9f9;
+        }
+        .player-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .player-card {
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+            width: 200px;
+        }
+        .host-screen {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            grid-column: span 2;
+        }
+        .answer-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .pair-selector {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .decoder-container {
+            border: 2px solid #333;
+            padding: 15px;
+            margin-top: 10px;
+            background-color: #e9f7ef;
+        }
+        .decoder-input {
+            padding: 8px;
+            font-size: 16px;
+            margin-right: 10px;
+            width: 200px;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #e0e0e0;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .typing-progress {
+            margin-top: 10px;
+            padding: 5px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .correct-answer {
+            color: green;
+            font-weight: bold;
+        }
+        .wrong-answer {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+<h1 style="grid-column: span 2;">Тестовый стенд SmartTest</h1>
+
+<div class="section">
+    <h2>Подключение WebSocket</h2>
+    <button id="connectWs">Подключиться к WebSocket</button>
+    <button id="disconnectWs">Отключиться</button>
+    <div class="log" id="wsLog"></div>
+</div>
+
+<div class="section">
+    <h2>Ведущий (Host)</h2>
+    <button id="hostJoin">Подключиться как ведущий</button>
+    <button id="hostLeave">Отключиться</button>
+    <button id="hostStatus">Проверить статус</button>
+    <div class="log" id="hostLog"></div>
+</div>
+
+<div class="section">
+    <h2>Игроки</h2>
+    <div class="player-list" id="availablePlayers"></div>
+    <div>
+        <input type="text" id="playerName" placeholder="Имя игрока">
+        <button id="playerJoin">Подключить игрока</button>
+    </div>
+    <div class="log" id="playerLog"></div>
+</div>
+
+<div class="section">
+    <h2>Управление раундами</h2>
+    <button id="startRound1">Начать раунд 1</button>
+    <button id="nextQuestion">Следующий вопрос</button>
+    <button id="showAnswer">Показать ответ</button>
+    <button id="startAdditionalRound1">Начать доп. раунд 1</button>
+    <button id="startDecoder1">Запустить дешифратор 1</button>
+    <div class="log" id="roundLog"></div>
+</div>
+
+<div class="section">
+    <h2>Ответы игроков</h2>
+    <div id="currentQuestion"></div>
+    <div id="answerControls" style="display: none;">
+        <select id="answerSelect"></select>
+        <button id="submitAnswer">Отправить ответ</button>
+    </div>
+    <div id="additionalRoundControls" style="display: none;">
+        <h3>Сопоставление пар:</h3>
+        <div class="answer-grid" id="matchingGrid"></div>
+        <button id="submitAdditionalAnswer">Отправить сопоставление</button>
+    </div>
+    <div id="decoderControls" style="display: none;">
+        <div class="decoder-container">
+            <h3>Дешифратор:</h3>
+            <p id="decoderHint"></p>
+            <p id="decoderCode"></p>
+            <input type="text" id="decoderInput" class="decoder-input" placeholder="Введите слово">
+            <button id="submitDecoderAnswer">Отправить ответ</button>
+            <div class="progress-bar">
+                <div class="progress-fill" id="decoderProgress"></div>
+            </div>
+            <div class="typing-progress" id="typingProgress"></div>
+        </div>
+    </div>
+    <div class="log" id="answerLog"></div>
+</div>
+
+<div class="section">
+    <h2>Загрузка сценария</h2>
+    <input type="file" id="scenarioFile">
+    <button id="uploadScenario">Загрузить сценарий</button>
+    <div class="log" id="scenarioLog"></div>
+</div>
+
+<div class="host-screen">
+    <h2>Экран ведущего</h2>
+    <div id="hostView">
+        <p>Здесь будет отображаться информация для ведущего</p>
+    </div>
+    <div class="log" id="hostViewLog"></div>
+</div>
+
+<script>
+    // Базовые переменные
+    const baseUrl = window.location.origin;
+    let stompClient = null;
+    let currentPlayer = null;
+    let currentQuestion = null;
+    let leftParts = [];
+    let rightParts = [];
+    let selectedPairs = [];
+    let decoderInfo = null;
+    let decoderCorrectWord = "";
+
+    // Элементы DOM
+    const wsLog = document.getElementById('wsLog');
+    const hostLog = document.getElementById('hostLog');
+    const playerLog = document.getElementById('playerLog');
+    const roundLog = document.getElementById('roundLog');
+    const answerLog = document.getElementById('answerLog');
+    const scenarioLog = document.getElementById('scenarioLog');
+    const availablePlayers = document.getElementById('availablePlayers');
+    const currentQuestionDiv = document.getElementById('currentQuestion');
+    const answerControls = document.getElementById('answerControls');
+    const additionalRoundControls = document.getElementById('additionalRoundControls');
+    const decoderControls = document.getElementById('decoderControls');
+    const answerSelect = document.getElementById('answerSelect');
+    const matchingGrid = document.getElementById('matchingGrid');
+    const decoderHint = document.getElementById('decoderHint');
+    const decoderCode = document.getElementById('decoderCode');
+    const decoderInput = document.getElementById('decoderInput');
+    const decoderProgress = document.getElementById('decoderProgress');
+    const typingProgress = document.getElementById('typingProgress');
+    const hostView = document.getElementById('hostView');
+    const hostViewLog = document.getElementById('hostViewLog');
+
+    // Логирование в разные секции
+    function logTo(element, message) {
+        element.innerHTML += `<div>${new Date().toLocaleTimeString()}: ${message}</div>`;
+        element.scrollTop = element.scrollHeight;
+    }
+
+    // Подключение к WebSocket
+    document.getElementById('connectWs').addEventListener('click', () => {
+        const socket = new SockJS(baseUrl + '/ws');
+        stompClient = Stomp.over(socket);
+
+        stompClient.connect({}, (frame) => {
+            logTo(wsLog, 'Подключено к WebSocket');
+
+            // Подписка на топики
+            stompClient.subscribe('/topic/game', (message) => {
+                const content = JSON.parse(message.body);
+                logTo(wsLog, `Получено сообщение игры: ${JSON.stringify(content)}`);
+
+                if (content.event === 'QUESTION') {
+                    currentQuestion = content;
+                    currentQuestionDiv.innerHTML = `
+                            <h3>Текущий вопрос:</h3>
+                            <p>${content.question}</p>
+                            <h4>Варианты ответов:</h4>
+                            <ul>
+                                ${content.choices.map(c => `<li>${c}</li>`).join('')}
+                            </ul>
+                        `;
+
+                    // Заполняем select вариантами ответов
+                    answerSelect.innerHTML = '';
+                    content.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice;
+                        option.textContent = choice;
+                        answerSelect.appendChild(option);
+                    });
+
+                    answerControls.style.display = 'block';
+                    additionalRoundControls.style.display = 'none';
+                    decoderControls.style.display = 'none';
+                }
+                else if (content.event === 'QUESTION_ENDED') {
+                    currentQuestionDiv.innerHTML += '<p>Время на ответ вышло!</p>';
+                    answerControls.style.display = 'none';
+                }
+                else if (content.event === 'SHOW_CORRECT_ANSWER') {
+                    currentQuestionDiv.innerHTML += `
+                            <p>Правильный ответ: ${content.payload.correctAnswer}</p>
+                            <p>Комментарий: ${content.payload.comment}</p>
+                        `;
+                }
+                else if (content.event === 'ADDITIONAL_ROUND_STARTED') {
+                    currentQuestionDiv.innerHTML = `
+                            <h3>Дополнительный раунд:</h3>
+                            <p>${content.text}</p>
+                            <h4>Левая часть:</h4>
+                            <ul>
+                                ${content.leftParts.map(p => `<li>${p}</li>`).join('')}
+                            </ul>
+                            <h4>Правая часть:</h4>
+                            <ul>
+                                ${content.rightParts.map(p => `<li>${p}</li>`).join('')}
+                            </ul>
+                        `;
+
+                    leftParts = content.leftParts;
+                    rightParts = content.rightParts;
+                    selectedPairs = [];
+                    renderMatchingGrid();
+
+                    answerControls.style.display = 'none';
+                    additionalRoundControls.style.display = 'block';
+                    decoderControls.style.display = 'none';
+                }
+                else if (content.event === 'DECODER_STARTED') {
+                    decoderInfo = content;
+                    decoderCorrectWord = content.word || "";
+                    currentQuestionDiv.innerHTML = `
+                            <h3>Дешифратор:</h3>
+                            <p>Подсказка: ${content.hint}</p>
+                            <p>Код: ${content.code}</p>
+                        `;
+
+                    decoderHint.textContent = `Подсказка: ${content.hint}`;
+                    decoderCode.textContent = `Код: ${content.code}`;
+                    decoderInput.value = '';
+                    decoderProgress.style.width = '0%';
+                    typingProgress.innerHTML = '';
+
+                    answerControls.style.display = 'none';
+                    additionalRoundControls.style.display = 'none';
+                    decoderControls.style.display = 'block';
+                }
+            });
+
+            stompClient.subscribe('/topic/director', (message) => {
+                const content = JSON.parse(message.body);
+                logTo(wsLog, `Получено сообщение для директора: ${JSON.stringify(content)}`);
+
+                // Обновляем экран ведущего
+                if (content.type === 'PLAYER_ANSWER') {
+                    let answersHtml = '<h3>Ответы игроков:</h3><ul>';
+                    for (const [player, answer] of Object.entries(content.payload)) {
+                        answersHtml += `<li>${player}: ${answer}</li>`;
+                    }
+                    answersHtml += '</ul>';
+                    hostView.innerHTML = answersHtml;
+                    logTo(hostViewLog, `Игроки ответили: ${JSON.stringify(content.payload)}`);
+                }
+                else if (content.type === 'ADDITIONAL_ROUND_ANSWER') {
+                    hostView.innerHTML += `
+                            <div>
+                                <p>Игрок ${content.player} получил ${content.points} очков в доп. раунде</p>
+                            </div>
+                        `;
+                    logTo(hostViewLog, `Игрок ${content.player} получил ${content.points} очков в доп. раунде`);
+                }
+                else if (content.type === 'DECODER_ANSWER_CORRECT') {
+                    hostView.innerHTML += `
+                            <div class="correct-answer">
+                                <p>✅ Игрок ${content.player} правильно ответил: "${content.answer}" (${content.time} мс)</p>
+                            </div>
+                        `;
+                    logTo(hostViewLog, `Правильный ответ на дешифратор от ${content.player}: ${content.answer}`);
+                }
+                else if (content.type === 'DECODER_ANSWER_WRONG') {
+                    hostView.innerHTML += `
+                            <div class="wrong-answer">
+                                <p>❌ Игрок ${content.player} ответил: "${content.answer}" (${content.time} мс)</p>
+                                <p>Правильный ответ: ${decoderCorrectWord}</p>
+                            </div>
+                        `;
+                    logTo(hostViewLog, `Неправильный ответ на дешифратор от ${content.player}: ${content.answer}`);
+                }
+                else if (content.type === 'DECODER_TYPING_PROGRESS') {
+                    hostView.innerHTML += `
+                            <div>
+                                <p>Игрок ${content.player} вводит: "${content.input}" (${content.percent}% совпадение)</p>
+                            </div>
+                        `;
+                    logTo(hostViewLog, `Прогресс ввода ${content.player}: ${content.input} (${content.percent}%)`);
+                }
+                else if (content.type === 'DECODER_ALREADY_ANSWERED') {
+                    hostView.innerHTML += `
+                            <div>
+                                <p>⚠️ Игрок ${content.player} уже ответил на дешифратор</p>
+                            </div>
+                        `;
+                    logTo(hostViewLog, `Игрок ${content.player} уже ответил на дешифратор`);
+                }
+                else if (content.type === 'ROUND_FINISHED') {
+                    hostView.innerHTML += `<p>${content.payload}</p>`;
+                    logTo(hostViewLog, content.payload);
+                }
+            });
+
+            // Подписка на персональные ошибки
+            if (currentPlayer) {
+                stompClient.subscribe(`/user/${currentPlayer}/queue/errors`, (message) => {
+                    const content = JSON.parse(message.body);
+                    logTo(answerLog, `Ошибка: ${content.message}`);
+                });
+            }
+
+        }, (error) => {
+            logTo(wsLog, `Ошибка подключения: ${error}`);
+        });
+    });
+
+    // Отключение от WebSocket
+    document.getElementById('disconnectWs').addEventListener('click', () => {
+        if (stompClient !== null) {
+            stompClient.disconnect();
+            logTo(wsLog, 'Отключено от WebSocket');
+        }
+    });
+
+    // Ведущий
+    document.getElementById('hostJoin').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/host/join', { method: 'POST' });
+            const result = await response.text();
+            logTo(hostLog, result);
+        } catch (error) {
+            logTo(hostLog, `Ошибка: ${error}`);
+        }
+    });
+
+    document.getElementById('hostLeave').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/host/leave', { method: 'POST' });
+            const result = await response.text();
+            logTo(hostLog, result);
+        } catch (error) {
+            logTo(hostLog, `Ошибка: ${error}`);
+        }
+    });
+
+    document.getElementById('hostStatus').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/host/status');
+            const result = await response.text();
+            logTo(hostLog, result);
+        } catch (error) {
+            logTo(hostLog, `Ошибка: ${error}`);
+        }
+    });
+
+    // Игроки
+    async function loadAvailablePlayers() {
+        try {
+            const response = await fetch(baseUrl + '/players/available');
+            const players = await response.json();
+
+            availablePlayers.innerHTML = '';
+            players.forEach(player => {
+                const playerCard = document.createElement('div');
+                playerCard.className = 'player-card';
+                playerCard.innerHTML = `
+                        <h4>${player}</h4>
+                        <button onclick="joinPlayer('${player}')">Подключить</button>
+                    `;
+                availablePlayers.appendChild(playerCard);
+            });
+
+            logTo(playerLog, `Загружено ${players.length} игроков`);
+        } catch (error) {
+            logTo(playerLog, `Ошибка загрузки игроков: ${error}`);
+        }
+    }
+
+    window.joinPlayer = async (playerName) => {
+        try {
+            const response = await fetch(`${baseUrl}/players/join?playerName=${encodeURIComponent(playerName)}`, {
+                method: 'POST'
+            });
+            const result = await response.text();
+            logTo(playerLog, result);
+
+            if (response.ok) {
+                currentPlayer = playerName;
+                // Переподписываемся на ошибки после смены игрока
+                if (stompClient && stompClient.connected) {
+                    stompClient.subscribe(`/user/${currentPlayer}/queue/errors`, (message) => {
+                        const content = JSON.parse(message.body);
+                        logTo(answerLog, `Ошибка: ${content.message}`);
+                    });
+                }
+            }
+        } catch (error) {
+            logTo(playerLog, `Ошибка: ${error}`);
+        }
+    };
+
+    document.getElementById('playerJoin').addEventListener('click', () => {
+        const playerName = document.getElementById('playerName').value;
+        if (playerName) {
+            joinPlayer(playerName);
+        }
+    });
+
+    // Управление раундами
+    document.getElementById('startRound1').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/round/start/1', { method: 'POST' });
+            const result = await response.text();
+            logTo(roundLog, result);
+        } catch (error) {
+            logTo(roundLog, `Ошибка: ${error}`);
+        }
+    });
+
+    document.getElementById('nextQuestion').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/round/next-question', { method: 'POST' });
+            const result = await response.text();
+            logTo(roundLog, result);
+        } catch (error) {
+            logTo(roundLog, `Ошибка: ${error}`);
+        }
+    });
+
+    document.getElementById('showAnswer').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/round/show-answer', { method: 'POST' });
+            const result = await response.text();
+            logTo(roundLog, result);
+        } catch (error) {
+            logTo(roundLog, `Ошибка: ${error}`);
+        }
+    });
+
+    document.getElementById('startAdditionalRound1').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/round/start/1/additional', { method: 'POST' });
+            const result = await response.text();
+            logTo(roundLog, result);
+        } catch (error) {
+            logTo(roundLog, `Ошибка: ${error}`);
+        }
+    });
+
+    document.getElementById('startDecoder1').addEventListener('click', async () => {
+        try {
+            const response = await fetch(baseUrl + '/round/decoder/start/1', { method: 'POST' });
+            const result = await response.text();
+            logTo(roundLog, result);
+        } catch (error) {
+            logTo(roundLog, `Ошибка: ${error}`);
+        }
+    });
+
+    // Отправка ответа
+    document.getElementById('submitAnswer').addEventListener('click', () => {
+        if (!currentPlayer) {
+            logTo(answerLog, 'Ошибка: игрок не выбран');
+            return;
+        }
+
+        if (!stompClient || !stompClient.connected) {
+            logTo(answerLog, 'Ошибка: нет подключения к WebSocket');
+            return;
+        }
+
+        const answer = answerSelect.value;
+        const playerAnswer = {
+            playerName: currentPlayer,
+            answer: answer
+        };
+
+        stompClient.send("/app/playerAnswer", {}, JSON.stringify(playerAnswer));
+        logTo(answerLog, `Отправлен ответ: ${answer}`);
+    });
+
+    // Отрисовка сетки для сопоставления
+    function renderMatchingGrid() {
+        matchingGrid.innerHTML = '';
+
+        leftParts.forEach((left, leftIndex) => {
+            rightParts.forEach((right, rightIndex) => {
+                const pairId = `pair-${leftIndex}-${rightIndex}`;
+                const isSelected = selectedPairs.some(p => p[0] === left && p[1] === right);
+
+                const pairElement = document.createElement('div');
+                pairElement.className = `pair-selector ${isSelected ? 'selected' : ''}`;
+                pairElement.innerHTML = `
+                        <input type="checkbox" id="${pairId}"
+                               ${isSelected ? 'checked' : ''}
+                               onchange="togglePair('${left}', '${right}')">
+                        <label for="${pairId}">${left} ↔ ${right}</label>
+                    `;
+                matchingGrid.appendChild(pairElement);
+            });
+        });
+    }
+
+    // Переключение выбора пары
+    window.togglePair = function(left, right) {
+        const pair = [left, right];
+        const pairIndex = selectedPairs.findIndex(p => p[0] === left && p[1] === right);
+
+        if (pairIndex >= 0) {
+            selectedPairs.splice(pairIndex, 1);
+        } else {
+            selectedPairs.push(pair);
+        }
+
+        renderMatchingGrid();
+    };
+
+    // Отправка ответа для дополнительного раунда
+    document.getElementById('submitAdditionalAnswer').addEventListener('click', () => {
+        if (!currentPlayer) {
+            logTo(answerLog, 'Ошибка: игрок не выбран');
+            return;
+        }
+
+        if (!stompClient || !stompClient.connected) {
+            logTo(answerLog, 'Ошибка: нет подключения к WebSocket');
+            return;
+        }
+
+        if (selectedPairs.length === 0) {
+            logTo(answerLog, 'Ошибка: не выбрано ни одной пары');
+            return;
+        }
+
+        const answer = {
+            playerName: currentPlayer,
+            matchedPairs: selectedPairs
+        };
+
+        stompClient.send("/app/round1/additional/answer", {}, JSON.stringify(answer));
+        logTo(answerLog, `Отправлены пары: ${JSON.stringify(selectedPairs)}`);
+    });
+
+    // Отправка ответа на дешифратор
+    document.getElementById('submitDecoderAnswer').addEventListener('click', () => {
+        if (!currentPlayer) {
+            logTo(answerLog, 'Ошибка: игрок не выбран');
+            return;
+        }
+
+        if (!stompClient || !stompClient.connected) {
+            logTo(answerLog, 'Ошибка: нет подключения к WebSocket');
+            return;
+        }
+
+        const answer = decoderInput.value;
+        if (!answer) {
+            logTo(answerLog, 'Ошибка: введите ответ');
+            return;
+        }
+
+        const decoderAnswer = {
+            playerName: currentPlayer,
+            answer: answer
+        };
+
+        stompClient.send("/app/decoder/answer", {}, JSON.stringify(decoderAnswer));
+        logTo(answerLog, `Отправлен ответ на дешифратор: ${answer}`);
+    });
+
+    // Отслеживание ввода для дешифратора
+    decoderInput.addEventListener('input', () => {
+        if (!currentPlayer || !decoderCorrectWord) return;
+
+        const currentInput = decoderInput.value;
+        const matchPercent = calculateMatchPercent(decoderCorrectWord, currentInput);
+
+        // Обновляем прогресс-бар
+        decoderProgress.style.width = `${matchPercent}%`;
+
+        // Отправляем прогресс на сервер
+        if (stompClient && stompClient.connected) {
+            const progress = {
+                playerName: currentPlayer,
+                currentInput: currentInput
+            };
+
+            stompClient.send("/app/decoder/progress", {}, JSON.stringify(progress));
+        }
+
+        // Локальное отображение прогресса
+        typingProgress.innerHTML = `
+                <p>Совпадение: ${matchPercent}%</p>
+                <p>Введено: ${currentInput.length}/${decoderCorrectWord.length} символов</p>
+            `;
+    });
+
+    // Расчет процента совпадения
+    function calculateMatchPercent(correct, input) {
+        const correctLength = correct.length;
+        let matchLength = 0;
+
+        for (let i = 0; i < Math.min(input.length, correctLength); i++) {
+            if (input[i].toUpperCase() === correct[i].toUpperCase()) {
+                matchLength++;
+            }
+        }
+
+        return Math.round((matchLength / correctLength) * 100);
+    }
+
+    // Загрузка сценария
+    document.getElementById('uploadScenario').addEventListener('click', async () => {
+        const fileInput = document.getElementById('scenarioFile');
+        if (fileInput.files.length === 0) {
+            logTo(scenarioLog, 'Ошибка: файл не выбран');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const response = await fetch(baseUrl + '/scenario/download', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.text();
+            logTo(scenarioLog, result);
+
+            // После загрузки обновляем список игроков
+            if (response.ok) {
+                loadAvailablePlayers();
+            }
+        } catch (error) {
+            logTo(scenarioLog, `Ошибка: ${error}`);
+        }
+    });
+
+    // Инициализация
+    loadAvailablePlayers();
+</script>
+</body>
+</html>

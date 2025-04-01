@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>🎚 Звуковой Пульт Режиссёра</title>
+    <style>
+        body { font-family: sans-serif; background: #111; color: #fff; padding: 20px; }
+        h2 { color: #ffd700; }
+        .category { margin-bottom: 30px; }
+        .button-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        button {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background: #444;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #00aaff;
+        }
+    </style>
+</head>
+<body>
+<h1>🎬 Панель управления звуками</h1>
+<div id="soundPanel">Загрузка...</div>
+
+<button onclick="stopSound()">🛑 Стоп</button>
+
+<script>
+    async function loadSounds() {
+        const res = await fetch('/sound/categories');
+        const data = await res.json();
+        const panel = document.getElementById('soundPanel');
+        panel.innerHTML = '';
+
+        Object.keys(data).forEach(category => {
+            const section = document.createElement('div');
+            section.className = 'category';
+
+            const title = document.createElement('h2');
+            title.textContent = category;
+            section.appendChild(title);
+
+            const grid = document.createElement('div');
+            grid.className = 'button-grid';
+
+            data[category].forEach(filename => {
+                const btn = document.createElement('button');
+                btn.textContent = filename;
+                btn.onclick = () => playSound(filename);
+                grid.appendChild(btn);
+            });
+
+            section.appendChild(grid);
+            panel.appendChild(section);
+        });
+    }
+
+    async function playSound(filename) {
+        // Отправка серверу (если нужно для синхронизации)
+        await fetch('/sound/play?filename=' + encodeURIComponent(filename), {
+            method: 'POST'
+        });
+
+        // Воспроизведение на клиенте
+        const audio = new Audio('/sounds/' + filename);
+        try {
+            await audio.play();
+        } catch (err) {
+            console.error("🎧 Ошибка воспроизведения:", err);
+            alert("❌ Не удалось воспроизвести звук. Браузер, скорее всего, требует взаимодействия с пользователем.");
+        }
+    }
+
+    async function stopSound() {
+        await fetch('/sound/stop', { method: 'POST' });
+        alert("⏹ Звук остановлен");
+    }
+
+    loadSounds();
+</script>
+
+</body>
+</html>
